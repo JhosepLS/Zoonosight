@@ -12,6 +12,10 @@ Plataforma web para análisis histórico y visualización de datos de vigilancia
 * pip (gestor de paquetes de Python)
 * Git
 
+## Dataset del Minsa
+
+* https://www.datosabiertos.gob.pe/dataset/vigilancia-epidemiológica-de-las-zoonosis
+
 ---
 
 ## Instalación y Configuración
