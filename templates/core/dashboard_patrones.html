@@ -201,23 +201,42 @@ function actualizarGraficoPatrones(data) {
     }
     
     graficoPatrones = new Chart(ctx, {
-        type: 'bar',
+        type: 'line',
         data: {
             labels: data.meses,
-            datasets: [{
-                label: 'Casos por Mes',
-                data: data.casos,
-                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
+            datasets: data.datasets.map(ds => ({
+                label: ds.label,
+                data: ds.data,
+                borderColor: ds.borderColor,
+                backgroundColor: ds.backgroundColor,
+                tension: 0.3,
+                fill: true
+            }))
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
             plugins: {
                 legend: {
-                    display: true
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        footer: function(tooltipItems) {
+                            let sum = 0;
+                            tooltipItems.forEach(function(tooltipItem) {
+                                sum += tooltipItem.parsed.y;
+                            });
+                            return 'Total: ' + sum + ' casos';
+                        }
+                    }
                 }
             },
             scales: {
@@ -226,6 +245,12 @@ function actualizarGraficoPatrones(data) {
                     title: {
                         display: true,
                         text: 'Número de Casos'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Meses del Año'
                     }
                 }
             }
@@ -236,18 +261,41 @@ function actualizarGraficoPatrones(data) {
 function actualizarInsights(data) {
     const stats = data.estadisticas;
     
-    document.getElementById('mes-max-insight').textContent = stats.mes_max;
-    document.getElementById('casos-max-insight').textContent = stats.casos_max;
-    document.getElementById('mes-min-insight').textContent = stats.mes_min;
-    document.getElementById('casos-min-insight').textContent = stats.casos_min;
-    document.getElementById('total-insight').textContent = stats.total;
-    document.getElementById('promedio-mensual').textContent = stats.promedio_mensual + ' casos';
+    // Crear tabla comparativa
+    let insightsHTML = `
+        <div class="mb-3">
+            <strong>Total General:</strong><br>
+            <span class="text-primary">${stats.total_general}</span> casos en el período
+        </div>
+        <hr>
+        <h6 class="mb-2">Por Enfermedad:</h6>
+    `;
+    
+    stats.zoonosis_data.forEach((z, index) => {
+        const porcentaje = ((z.total / stats.total_general) * 100).toFixed(1);
+        insightsHTML += `
+            <div class="mb-3 pb-2 ${index < stats.zoonosis_data.length - 1 ? 'border-bottom' : ''}">
+                <strong class="text-primary">${z.nombre}</strong><br>
+                <small class="text-muted">
+                    Total: ${z.total} casos (${porcentaje}%)<br>
+                    Pico: ${z.mes_max} (${z.casos_max} casos)<br>
+                    Bajo: ${z.mes_min} (${z.casos_min} casos)
+                </small>
+            </div>
+        `;
+    });
+    
+    document.querySelector('.card.mb-3[style*="background-color: #fff3cd"] .card-body').innerHTML = insightsHTML;
+    
+    // Actualizar estadísticas generales
+    const promedioGeneral = Math.round(stats.total_general / 12);
+    document.getElementById('promedio-mensual').textContent = `${promedioGeneral} casos`;
 }
 
-// Vista circular (placeholder)
+// Cambiar tipo de gráfico
 document.getElementById('btn-circular').addEventListener('click', function() {
     if (graficoPatrones) {
-        graficoPatrones.config.type = 'polarArea';
+        graficoPatrones.config.type = 'radar';
         graficoPatrones.update();
         this.classList.add('active');
         document.getElementById('btn-meses').classList.remove('active');
@@ -256,7 +304,7 @@ document.getElementById('btn-circular').addEventListener('click', function() {
 
 document.getElementById('btn-meses').addEventListener('click', function() {
     if (graficoPatrones) {
-        graficoPatrones.config.type = 'bar';
+        graficoPatrones.config.type = 'line';
         graficoPatrones.update();
         this.classList.add('active');
         document.getElementById('btn-circular').classList.remove('active');

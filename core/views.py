@@ -164,7 +164,7 @@ def dashboard_patrones(request):
     return render(request, 'core/dashboard_patrones.html', context)
 
 def api_patrones_estacionales(request):
-    """API para obtener patrones estacionales por mes"""
+    """API para obtener patrones estacionales por mes con comparación entre zoonosis"""
     zoonosis_ids = request.GET.getlist('zoonosis_ids[]')
     anio_inicio = request.GET.get('anio_inicio')
     anio_fin = request.GET.get('anio_fin')
@@ -173,51 +173,88 @@ def api_patrones_estacionales(request):
     if not all([zoonosis_ids, anio_inicio, anio_fin]):
         return JsonResponse({'error': 'Parámetros incompletos'}, status=400)
     
-    # Construir consulta
-    query = Q(zoonosis_id__in=zoonosis_ids, anio__gte=anio_inicio, anio__lte=anio_fin)
+    # Preparar datasets para cada zoonosis seleccionada
+    datasets = []
+    colores = [
+        {'border': 'rgb(255, 99, 132)', 'bg': 'rgba(255, 99, 132, 0.2)'},
+        {'border': 'rgb(54, 162, 235)', 'bg': 'rgba(54, 162, 235, 0.2)'},
+        {'border': 'rgb(255, 206, 86)', 'bg': 'rgba(255, 206, 86, 0.2)'},
+        {'border': 'rgb(75, 192, 192)', 'bg': 'rgba(75, 192, 192, 0.2)'},
+        {'border': 'rgb(153, 102, 255)', 'bg': 'rgba(153, 102, 255, 0.2)'},
+    ]
     
-    if departamento_id and departamento_id != 'nacional':
-        query &= Q(distrito__provincia__departamento_id=departamento_id)
+    estadisticas_globales = {
+        'total_general': 0,
+        'zoonosis_data': []
+    }
     
-    # Calcular semana a mes aproximado
-    casos = Caso.objects.filter(query)
-    
-    # Agrupar por mes (aproximado desde semana epidemiológica)
-    meses_data = {}
-    for mes in range(1, 13):
-        # Aproximación: semana 1-4 = mes 1, semana 5-8 = mes 2, etc.
-        semana_inicio = (mes - 1) * 4 + 1
-        semana_fin = mes * 4
+    for idx, zoonosis_id in enumerate(zoonosis_ids):
+        # Construir consulta para esta zoonosis
+        query = Q(zoonosis_id=zoonosis_id, anio__gte=anio_inicio, anio__lte=anio_fin)
         
-        casos_mes = casos.filter(
-            semana_epidemiologica__gte=semana_inicio,
-            semana_epidemiologica__lte=semana_fin
-        ).count()
+        if departamento_id and departamento_id != 'nacional':
+            query &= Q(distrito__provincia__departamento_id=departamento_id)
         
-        meses_data[mes] = casos_mes
+        casos = Caso.objects.filter(query)
+        
+        # Calcular casos por mes
+        meses_data = {}
+        for mes in range(1, 13):
+            semana_inicio = (mes - 1) * 4 + 1
+            semana_fin = mes * 4
+            
+            casos_mes = casos.filter(
+                semana_epidemiologica__gte=semana_inicio,
+                semana_epidemiologica__lte=semana_fin
+            ).count()
+            
+            meses_data[mes] = casos_mes
+        
+        casos_por_mes = [meses_data[i] for i in range(1, 13)]
+        total_casos = sum(casos_por_mes)
+        
+        # Obtener nombre de la zoonosis
+        zoonosis = TipoZoonosis.objects.get(id=zoonosis_id)
+        
+        # Añadir dataset
+        color = colores[idx % len(colores)]
+        datasets.append({
+            'label': zoonosis.nombre,
+            'data': casos_por_mes,
+            'borderColor': color['border'],
+            'backgroundColor': color['bg'],
+            'total': total_casos
+        })
+        
+        # Estadísticas por zoonosis
+        if casos_por_mes:
+            mes_max_index = casos_por_mes.index(max(casos_por_mes))
+            mes_min_index = casos_por_mes.index(min(casos_por_mes))
+        else:
+            mes_max_index = 0
+            mes_min_index = 0
+        
+        meses_nombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+        
+        estadisticas_globales['zoonosis_data'].append({
+            'nombre': zoonosis.nombre,
+            'total': total_casos,
+            'promedio': round(total_casos / 12, 1),
+            'mes_max': meses_nombres[mes_max_index],
+            'casos_max': casos_por_mes[mes_max_index],
+            'mes_min': meses_nombres[mes_min_index],
+            'casos_min': casos_por_mes[mes_min_index]
+        })
+        
+        estadisticas_globales['total_general'] += total_casos
     
-    # Preparar datos para gráfico
+    # Meses del año
     meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-    casos_por_mes = [meses_data[i] for i in range(1, 13)]
-    
-    # Estadísticas
-    total_casos = sum(casos_por_mes)
-    promedio_mensual = total_casos / 12 if total_casos > 0 else 0
-    
-    mes_max_index = casos_por_mes.index(max(casos_por_mes)) if casos_por_mes else 0
-    mes_min_index = casos_por_mes.index(min(casos_por_mes)) if casos_por_mes else 0
     
     data = {
         'meses': meses,
-        'casos': casos_por_mes,
-        'estadisticas': {
-            'total': total_casos,
-            'promedio_mensual': round(promedio_mensual, 1),
-            'mes_max': meses[mes_max_index],
-            'casos_max': casos_por_mes[mes_max_index],
-            'mes_min': meses[mes_min_index],
-            'casos_min': casos_por_mes[mes_min_index],
-        }
+        'datasets': datasets,
+        'estadisticas': estadisticas_globales
     }
     
     return JsonResponse(data)

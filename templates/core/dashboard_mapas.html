@@ -1,5 +1,43 @@
 {% extends 'base.html' %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+#mapa-leaflet {
+    height: 500px;
+    width: 100%;
+    border-radius: 8px;
+}
+.info-box {
+    padding: 6px 8px;
+    font: 14px/16px Arial, Helvetica, sans-serif;
+    background: white;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    border-radius: 5px;
+}
+.info-box h4 {
+    margin: 0 0 5px;
+    color: #777;
+}
+.legend-map {
+    line-height: 18px;
+    color: #555;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+}
+.legend-map i {
+    width: 18px;
+    height: 18px;
+    float: left;
+    margin-right: 8px;
+    opacity: 0.7;
+}
+</style>
+{% endblock %}
+
 {% block title %}Mapas de Calor - ZoonoSight{% endblock %}
 
 {% block content %}
@@ -59,39 +97,13 @@
             <div class="col-md-9">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0" id="titulo-mapa">Mapa de Calor</h5>
+                        <h5 class="mb-0" id="titulo-mapa">Mapa de Calor - Distribución por Departamentos</h5>
                         <button class="btn btn-outline-secondary btn-sm" id="btn-exportar-mapa">
                             <i class="bi bi-download"></i> Exportar Mapa
                         </button>
                     </div>
                     <div class="card-body">
-                        <!-- Visualización del mapa -->
-                        <div id="mapa-visualizacion" style="min-height: 500px; background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px;">
-                            <div class="text-center mt-5">
-                                <canvas id="canvas-mapa" width="700" height="400"></canvas>
-                            </div>
-                            
-                            <!-- Leyenda -->
-                            <div style="position: absolute; bottom: 30px; right: 30px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="margin-bottom: 10px;"><strong>Intensidad</strong></div>
-                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                                    <div style="width: 25px; height: 20px; background-color: #dc3545; margin-right: 10px; border: 1px solid #ccc;"></div>
-                                    <span style="font-size: 13px;">Alto (40+ casos)</span>
-                                </div>
-                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                                    <div style="width: 25px; height: 20px; background-color: #ffc107; margin-right: 10px; border: 1px solid #ccc;"></div>
-                                    <span style="font-size: 13px;">Medio (20-39 casos)</span>
-                                </div>
-                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                                    <div style="width: 25px; height: 20px; background-color: #28a745; margin-right: 10px; border: 1px solid #ccc;"></div>
-                                    <span style="font-size: 13px;">Bajo (1-19 casos)</span>
-                                </div>
-                                <div style="display: flex; align-items: center;">
-                                    <div style="width: 25px; height: 20px; background-color: #e9ecef; margin-right: 10px; border: 1px solid #ccc;"></div>
-                                    <span style="font-size: 13px;">Sin datos</span>
-                                </div>
-                            </div>
-                        </div>
+                        <div id="mapa-leaflet"></div>
                     </div>
                 </div>
             </div>
@@ -129,10 +141,21 @@
 
                 <div class="card">
                     <div class="card-header">
-                        <h6 class="mb-0">Comparación Años</h6>
+                        <h6 class="mb-0">Comparar con Otro Año</h6>
                     </div>
-                    <div class="card-body" id="comparacion-anos">
-                        <p class="text-muted text-center">Selecciona un año para ver comparación</p>
+                    <div class="card-body">
+                        <select class="form-select form-select-sm mb-2" id="anio-comparacion">
+                            <option value="">-- Seleccionar año --</option>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}">{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-sm btn-primary w-100" id="btn-comparar-ano">
+                            <i class="bi bi-arrow-left-right"></i> Comparar
+                        </button>
+                        <div id="comparacion-anos" class="mt-3">
+                            <p class="text-muted text-center small">Selecciona un año para comparar</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -155,7 +178,84 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+let mapaLeaflet = null;
+let marcadores = [];
+let datosActuales = null;
+let anioActual = null;
+let zoonosisActual = null;
+
+// Coordenadas precisas de las capitales de departamentos del Perú
+const coordenadasDepartamentos = {
+    'AMAZONAS': [-5.1717, -78.0093],
+    'ANCASH': [-9.5277, -77.5278],
+    'APURIMAC': [-13.6333, -72.8833],
+    'AREQUIPA': [-16.4090, -71.5375],
+    'AYACUCHO': [-13.1587, -74.2233],
+    'CAJAMARCA': [-7.1611, -78.5136],
+    'CALLAO': [-12.0565, -77.1181],
+    'CUSCO': [-13.5319, -71.9675],
+    'HUANCAVELICA': [-12.7869, -74.9761],
+    'HUANUCO': [-9.9306, -76.2422],
+    'ICA': [-14.0678, -75.7286],
+    'JUNIN': [-12.0697, -75.2044],
+    'LA LIBERTAD': [-8.1116, -79.0289],
+    'LAMBAYEQUE': [-6.7011, -79.9061],
+    'LIMA': [-12.0464, -77.0428],
+    'LORETO': [-3.7437, -73.2516],
+    'MADRE DE DIOS': [-12.5934, -69.1892],
+    'MOQUEGUA': [-17.1950, -70.9336],
+    'PASCO': [-10.6783, -76.2561],
+    'PIURA': [-5.1945, -80.6328],
+    'PUNO': [-15.8402, -70.0219],
+    'SAN MARTIN': [-6.4869, -76.3653],
+    'TACNA': [-18.0147, -70.2533],
+    'TUMBES': [-3.5669, -80.4515],
+    'UCAYALI': [-8.3791, -74.5539]
+};
+
+function inicializarMapa() {
+    if (mapaLeaflet) {
+        mapaLeaflet.remove();
+    }
+    
+    // Crear mapa centrado en Perú
+    mapaLeaflet = L.map('mapa-leaflet', {
+        center: [-9.19, -75.015],
+        zoom: 5,
+        minZoom: 5,
+        maxZoom: 8,
+        maxBounds: [[-20, -85], [2, -68]]
+    });
+    
+    // Capa de mapa base
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18,
+    }).addTo(mapaLeaflet);
+    
+    // Añadir leyenda
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'legend-map');
+        div.innerHTML = `
+            <h6 style="margin: 0 0 8px 0;"><strong>Intensidad</strong></h6>
+            <i style="background: #dc3545"></i> Alto (40+ casos)<br>
+            <i style="background: #ffc107"></i> Medio (20-39)<br>
+            <i style="background: #28a745"></i> Bajo (1-19)<br>
+            <i style="background: #6c757d"></i> Sin datos
+        `;
+        return div;
+    };
+    legend.addTo(mapaLeaflet);
+    
+    // Forzar que el mapa se ajuste correctamente
+    setTimeout(() => {
+        mapaLeaflet.invalidateSize();
+    }, 100);
+}
+
 document.getElementById('filtros-mapa-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -167,6 +267,9 @@ document.getElementById('filtros-mapa-form').addEventListener('submit', async fu
         alert('Por favor selecciona una zoonosis y un año');
         return;
     }
+    
+    zoonosisActual = zoonosisId;
+    anioActual = anio;
     
     // Mostrar loading
     document.getElementById('mensaje-inicial-mapa').style.display = 'none';
@@ -183,15 +286,22 @@ document.getElementById('filtros-mapa-form').addEventListener('submit', async fu
             throw new Error(data.error);
         }
         
-        // Actualizar mapa
-        dibujarMapa(data);
+        datosActuales = data;
         
-        // Actualizar estadísticas
-        actualizarEstadisticasMapa(data);
-        
-        // Mostrar resultados
+        // Mostrar resultados primero
         document.getElementById('loading-mapa').style.display = 'none';
         document.getElementById('resultados-mapa').style.display = 'block';
+        
+        // Inicializar mapa si no existe
+        if (!mapaLeaflet) {
+            inicializarMapa();
+        }
+        
+        // Actualizar mapa con datos
+        setTimeout(() => {
+            dibujarMarcadoresMapa(data);
+            actualizarEstadisticasMapa(data);
+        }, 200);
         
     } catch (error) {
         console.error('Error:', error);
@@ -201,72 +311,112 @@ document.getElementById('filtros-mapa-form').addEventListener('submit', async fu
     }
 });
 
-function dibujarMapa(data) {
-    const canvas = document.getElementById('canvas-mapa');
-    const ctx = canvas.getContext('2d');
-    
-    // Limpiar canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Título
+function dibujarMarcadoresMapa(data) {
     const enfermedadNombre = document.getElementById('enfermedad_mapa').selectedOptions[0].text;
     const anio = document.getElementById('anio_mapa').value;
     
     document.getElementById('titulo-mapa').textContent = 
-        `Mapa de Calor - ${enfermedadNombre} ${anio}`;
+        `Mapa de Calor - ${enfermedadNombre} (${anio})`;
     
-    // Dibujar representación simple del mapa
-    ctx.fillStyle = '#e9ecef';
-    ctx.fillRect(50, 50, 600, 300);
+    // Limpiar marcadores anteriores
+    marcadores.forEach(m => mapaLeaflet.removeLayer(m));
+    marcadores = [];
     
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(50, 50, 600, 300);
+    // Crear un objeto para contar casos por departamento
+    const casosPorDepartamento = {};
+    data.departamentos.forEach(dept => {
+        casosPorDepartamento[dept.nombre] = dept.casos;
+    });
     
-    // Título en el canvas
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 16px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('Mapa del Perú - Distribución de Casos', 350, 30);
-    
-    // Dibujar "burbujas" representando departamentos
-    const departamentos = data.departamentos.slice(0, 10); // Top 10
-    
-    departamentos.forEach((dept, index) => {
-        const x = 100 + (index % 5) * 120;
-        const y = 100 + Math.floor(index / 5) * 120;
-        const radio = Math.min(50, 10 + dept.casos / 2);
+    // Añadir círculos para todos los departamentos
+    Object.keys(coordenadasDepartamentos).forEach(deptNombre => {
+        const coords = coordenadasDepartamentos[deptNombre];
+        const casos = casosPorDepartamento[deptNombre] || 0;
         
-        // Color según cantidad
-        let color;
-        if (dept.casos >= 40) {
+        // Determinar color y radio según casos
+        let color, fillOpacity;
+        if (casos >= 40) {
             color = '#dc3545';
-        } else if (dept.casos >= 20) {
+            fillOpacity = 0.7;
+        } else if (casos >= 20) {
             color = '#ffc107';
-        } else {
+            fillOpacity = 0.7;
+        } else if (casos > 0) {
             color = '#28a745';
+            fillOpacity = 0.7;
+        } else {
+            color = '#6c757d';
+            fillOpacity = 0.3;
         }
         
-        // Dibujar círculo
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.7;
-        ctx.beginPath();
-        ctx.arc(x, y, radio, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
+        // Radio proporcional a casos (mínimo visible)
+        const radioBase = 20000; // metros
+        const radioMax = 80000;
+        const radio = casos > 0 ? Math.min(radioBase + (casos * 800), radioMax) : 15000;
         
-        // Borde
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        const circulo = L.circle(coords, {
+            color: color,
+            fillColor: color,
+            fillOpacity: fillOpacity,
+            radius: radio,
+            weight: 2
+        }).addTo(mapaLeaflet);
         
-        // Texto
-        ctx.fillStyle = '#000';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(dept.nombre.substring(0, 8), x, y - radio - 5);
-        ctx.fillText(dept.casos + ' casos', x, y + 3);
+        // Popup con información detallada
+        const popupContent = `
+            <div style="text-align: center; min-width: 120px;">
+                <h6 style="margin: 0 0 8px 0; color: #333;">${deptNombre}</h6>
+                <div style="font-size: 24px; font-weight: bold; color: ${color};">
+                    ${casos}
+                </div>
+                <div style="font-size: 12px; color: #666;">
+                    caso${casos !== 1 ? 's' : ''}
+                </div>
+                <hr style="margin: 8px 0;">
+                <div style="font-size: 11px; color: #999;">
+                    ${enfermedadNombre}<br>${anio}
+                </div>
+            </div>
+        `;
+        
+        circulo.bindPopup(popupContent);
+        
+        // Tooltip que aparece al pasar el mouse
+        circulo.bindTooltip(
+            `<strong>${deptNombre}</strong><br>${casos} caso${casos !== 1 ? 's' : ''}`, 
+            {
+                permanent: false,
+                direction: 'top',
+                className: 'leaflet-tooltip-custom'
+            }
+        );
+        
+        // Efecto hover
+        circulo.on('mouseover', function() {
+            this.setStyle({
+                fillOpacity: 0.9,
+                weight: 3
+            });
+        });
+        
+        circulo.on('mouseout', function() {
+            this.setStyle({
+                fillOpacity: fillOpacity,
+                weight: 2
+            });
+        });
+        
+        marcadores.push(circulo);
     });
+    
+    // Ajustar vista para mostrar todos los marcadores
+    if (marcadores.length > 0) {
+        const group = L.featureGroup(marcadores);
+        mapaLeaflet.fitBounds(group.getBounds(), {
+            padding: [50, 50],
+            maxZoom: 6
+        });
+    }
 }
 
 function actualizarEstadisticasMapa(data) {
@@ -280,26 +430,113 @@ function actualizarEstadisticasMapa(data) {
     const top5Container = document.getElementById('top5-container');
     top5Container.innerHTML = '';
     
+    if (stats.top5.length === 0) {
+        top5Container.innerHTML = '<p class="text-muted small">Sin datos</p>';
+        return;
+    }
+    
     stats.top5.forEach((dept, index) => {
         const badgeColor = index === 0 ? 'danger' : (index === 1 ? 'warning' : 'info');
         const div = document.createElement('div');
-        div.className = 'd-flex justify-content-between mb-2';
+        div.className = 'd-flex justify-content-between align-items-center mb-2';
         div.innerHTML = `
-            <span>${dept.nombre}</span>
+            <span style="font-size: 13px;">${dept.nombre}</span>
             <span class="badge bg-${badgeColor}">${dept.casos}</span>
         `;
         top5Container.appendChild(div);
     });
 }
 
-// Exportar mapa
+// Comparar con otro año
+document.getElementById('btn-comparar-ano').addEventListener('click', async function() {
+    const anioComparacion = document.getElementById('anio-comparacion').value;
+    
+    if (!anioComparacion) {
+        alert('Selecciona un año para comparar');
+        return;
+    }
+    
+    if (anioComparacion === anioActual) {
+        alert('Selecciona un año diferente al actual');
+        return;
+    }
+    
+    if (!zoonosisActual) {
+        alert('Primero genera un mapa');
+        return;
+    }
+    
+    try {
+        const response = await fetch(
+            `/api/mapa-calor/?zoonosis_id=${zoonosisActual}&anio=${anioComparacion}&escala=total`
+        );
+        const dataComparacion = await response.json();
+        
+        if (dataComparacion.error) {
+            throw new Error(dataComparacion.error);
+        }
+        
+        // Calcular diferencia
+        const totalAnterior = dataComparacion.estadisticas.total_nacional;
+        const totalActual = datosActuales.estadisticas.total_nacional;
+        const diferencia = totalActual - totalAnterior;
+        const porcentaje = totalAnterior > 0 ? ((diferencia / totalAnterior) * 100).toFixed(1) : 0;
+        
+        const colorClase = diferencia > 0 ? 'text-danger' : (diferencia < 0 ? 'text-success' : 'text-secondary');
+        const icono = diferencia > 0 ? 'arrow-up' : (diferencia < 0 ? 'arrow-down' : 'dash');
+        const textoTendencia = diferencia > 0 ? 'Aumento' : (diferencia < 0 ? 'Disminución' : 'Sin cambio');
+        
+        document.getElementById('comparacion-anos').innerHTML = `
+            <div class="small">
+                <div class="mb-2 pb-2 border-bottom">
+                    <div class="text-muted mb-1">Año ${anioComparacion}:</div>
+                    <strong>${totalAnterior}</strong> casos
+                </div>
+                <div class="mb-2 pb-2 border-bottom">
+                    <div class="text-muted mb-1">Año ${anioActual}:</div>
+                    <strong>${totalActual}</strong> casos
+                </div>
+                <div class="text-center ${colorClase} p-2" style="background-color: rgba(0,0,0,0.05); border-radius: 5px;">
+                    <i class="bi bi-${icono}"></i>
+                    <div style="font-size: 20px; font-weight: bold;">
+                        ${Math.abs(diferencia)}
+                    </div>
+                    <div style="font-size: 12px;">
+                        ${porcentaje > 0 ? '+' : ''}${porcentaje}%
+                    </div>
+                    <div style="font-size: 11px; margin-top: 5px;">
+                        ${textoTendencia}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al comparar años: ' + error.message);
+    }
+});
+
+// Exportar mapa como imagen
 document.getElementById('btn-exportar-mapa').addEventListener('click', function() {
-    const canvas = document.getElementById('canvas-mapa');
-    const url = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.download = 'mapa_calor.png';
-    link.href = url;
-    link.click();
+    if (!mapaLeaflet) {
+        alert('Primero genera un mapa');
+        return;
+    }
+    
+    // Usar leaflet-image o similar (por ahora, instrucciones manuales)
+    alert('Para exportar el mapa:\n\n1. Presiona Print Screen (PrtScn)\n2. Pega en Paint o cualquier editor\n3. Recorta y guarda la imagen\n\nO usa la extensión "Full Page Screen Capture" de tu navegador.');
 });
 </script>
+
+<style>
+.leaflet-tooltip-custom {
+    background-color: rgba(0, 0, 0, 0.8);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+</style>
 {% endblock %}
