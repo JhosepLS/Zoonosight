@@ -1,0 +1,314 @@
+{% extends 'base.html' %}
+
+{% block title %}Tendencias Históricas - ZoonoSight{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-graph-up-arrow"></i> Análisis de Tendencias Históricas</h2>
+            <p class="text-muted">Visualiza la evolución temporal de zoonosis específicas</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body bg-light">
+            <form id="filtros-form">
+                <div class="row align-items-end g-3">
+                    <div class="col-md-4">
+                        <label for="enfermedad" class="form-label">Seleccionar Enfermedad</label>
+                        <select class="form-select" id="enfermedad" name="enfermedad" required>
+                            <option value="">-- Seleccione una enfermedad --</option>
+                            {% for zoonosis in zoonosis_list %}
+                            <option value="{{ zoonosis.id }}">{{ zoonosis.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="anio_inicio" class="form-label">Año Inicio</label>
+                        <select class="form-select" id="anio_inicio" name="anio_inicio" required>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}" {% if ano == 2018 %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="anio_fin" class="form-label">Año Fin</label>
+                        <select class="form-select" id="anio_fin" name="anio_fin" required>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}" {% if ano == 2023 %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Generar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Área de resultados -->
+    <div id="resultados" style="display: none;">
+        <div class="row">
+            <!-- Gráfico Principal -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" id="titulo-grafico">Evolución de Casos</h5>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary active" id="btn-linea">
+                                <i class="bi bi-graph-up"></i> Líneas
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" id="btn-barra">
+                                <i class="bi bi-bar-chart"></i> Barras
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="grafico-tendencias" height="100"></canvas>
+                        <div class="d-flex justify-content-between mt-3">
+                            <button class="btn btn-outline-secondary btn-sm" id="btn-descargar">
+                                <i class="bi bi-download"></i> Descargar PNG
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" id="btn-exportar">
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Datos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estadísticas -->
+            <div class="col-md-4">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h3 class="text-primary" id="stat-total">0</h3>
+                        <p class="mb-0">Total de Casos</p>
+                        <small class="text-muted" id="stat-periodo"></small>
+                    </div>
+                </div>
+                
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h3 class="text-primary" id="stat-promedio">0</h3>
+                        <p class="mb-0">Promedio Anual</p>
+                        <small class="text-muted">casos por año</small>
+                    </div>
+                </div>
+
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h3 id="stat-tendencia" class="text-success">0%</h3>
+                        <p class="mb-0">Tendencia</p>
+                        <small class="text-muted" id="stat-tendencia-texto">Sin cambios</small>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Año con Mayor Incidencia</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span id="anio-max">-</span>
+                            <span class="badge bg-danger" id="casos-max">0 casos</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensaje inicial -->
+    <div id="mensaje-inicial" class="alert alert-info text-center">
+        <i class="bi bi-info-circle"></i> Selecciona una enfermedad y el rango de años para generar el análisis
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2">Procesando datos...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let miGrafico = null;
+
+document.getElementById('filtros-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const enfermedad = document.getElementById('enfermedad').value;
+    const anioInicio = document.getElementById('anio_inicio').value;
+    const anioFin = document.getElementById('anio_fin').value;
+    
+    if (!enfermedad) {
+        alert('Por favor selecciona una enfermedad');
+        return;
+    }
+    
+    // Mostrar loading
+    document.getElementById('mensaje-inicial').style.display = 'none';
+    document.getElementById('resultados').style.display = 'none';
+    document.getElementById('loading').style.display = 'block';
+    
+    try {
+        const response = await fetch(
+            `/api/tendencias/?zoonosis_id=${enfermedad}&anio_inicio=${anioInicio}&anio_fin=${anioFin}`
+        );
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Actualizar gráfico
+        actualizarGrafico(data);
+        
+        // Actualizar estadísticas
+        actualizarEstadisticas(data);
+        
+        // Mostrar resultados
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('resultados').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al cargar los datos: ' + error.message);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('mensaje-inicial').style.display = 'block';
+    }
+});
+
+function actualizarGrafico(data) {
+    const ctx = document.getElementById('grafico-tendencias').getContext('2d');
+    
+    const enfermedadNombre = document.getElementById('enfermedad').selectedOptions[0].text;
+    const anioInicio = document.getElementById('anio_inicio').value;
+    const anioFin = document.getElementById('anio_fin').value;
+    
+    document.getElementById('titulo-grafico').textContent = 
+        `Evolución de Casos - ${enfermedadNombre} (${anioInicio}-${anioFin})`;
+    
+    if (miGrafico) {
+        miGrafico.destroy();
+    }
+    
+    miGrafico = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.anos,
+            datasets: [{
+                label: 'Casos Reportados',
+                data: data.casos,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Número de Casos'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Año'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function actualizarEstadisticas(data) {
+    const stats = data.estadisticas;
+    const anioInicio = document.getElementById('anio_inicio').value;
+    const anioFin = document.getElementById('anio_fin').value;
+    
+    document.getElementById('stat-total').textContent = stats.total;
+    document.getElementById('stat-periodo').textContent = `${anioInicio}-${anioFin}`;
+    document.getElementById('stat-promedio').textContent = stats.promedio;
+    
+    const tendenciaElement = document.getElementById('stat-tendencia');
+    const tendenciaTexto = document.getElementById('stat-tendencia-texto');
+    
+    tendenciaElement.textContent = stats.tendencia + '%';
+    
+    if (stats.tendencia > 0) {
+        tendenciaElement.className = 'text-danger';
+        tendenciaTexto.textContent = 'Aumento';
+    } else if (stats.tendencia < 0) {
+        tendenciaElement.className = 'text-success';
+        tendenciaTexto.textContent = 'Disminución';
+    } else {
+        tendenciaElement.className = 'text-secondary';
+        tendenciaTexto.textContent = 'Sin cambios';
+    }
+    
+    document.getElementById('anio-max').textContent = stats.anio_max || '-';
+    document.getElementById('casos-max').textContent = `${stats.casos_max} casos`;
+}
+
+// Cambiar tipo de gráfico
+document.getElementById('btn-linea').addEventListener('click', function() {
+    if (miGrafico) {
+        miGrafico.config.type = 'line';
+        miGrafico.update();
+        this.classList.add('active');
+        document.getElementById('btn-barra').classList.remove('active');
+    }
+});
+
+document.getElementById('btn-barra').addEventListener('click', function() {
+    if (miGrafico) {
+        miGrafico.config.type = 'bar';
+        miGrafico.update();
+        this.classList.add('active');
+        document.getElementById('btn-linea').classList.remove('active');
+    }
+});
+
+// Descargar gráfico
+document.getElementById('btn-descargar').addEventListener('click', function() {
+    if (miGrafico) {
+        const url = miGrafico.toBase64Image();
+        const link = document.createElement('a');
+        link.download = 'grafico_tendencias.png';
+        link.href = url;
+        link.click();
+    }
+});
+
+// Exportar datos (placeholder)
+document.getElementById('btn-exportar').addEventListener('click', function() {
+    alert('Funcionalidad de exportación en desarrollo');
+});
+</script>
+{% endblock %}

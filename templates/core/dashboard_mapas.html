@@ -1,0 +1,305 @@
+{% extends 'base.html' %}
+
+{% block title %}Mapas de Calor - ZoonoSight{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-map"></i> Análisis Geográfico</h2>
+            <p class="text-muted">Distribución espacial de casos por departamento</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body bg-light">
+            <form id="filtros-mapa-form">
+                <div class="row align-items-end g-3">
+                    <div class="col-md-4">
+                        <label for="enfermedad_mapa" class="form-label">Tipo de Zoonosis</label>
+                        <select class="form-select" id="enfermedad_mapa" name="enfermedad_mapa" required>
+                            <option value="">-- Seleccione una zoonosis --</option>
+                            {% for zoonosis in zoonosis_list %}
+                            <option value="{{ zoonosis.id }}">{{ zoonosis.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="anio_mapa" class="form-label">Año</label>
+                        <select class="form-select" id="anio_mapa" name="anio_mapa" required>
+                            <option value="">-- Seleccione año --</option>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}" {% if ano == 2022 %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="escala" class="form-label">Escala</label>
+                        <select class="form-select" id="escala" name="escala">
+                            <option value="total" selected>Casos Totales</option>
+                            <option value="percapita">Casos per Cápita</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Actualizar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Área de resultados -->
+    <div id="resultados-mapa" style="display: none;">
+        <div class="row">
+            <!-- Mapa Principal -->
+            <div class="col-md-9">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" id="titulo-mapa">Mapa de Calor</h5>
+                        <button class="btn btn-outline-secondary btn-sm" id="btn-exportar-mapa">
+                            <i class="bi bi-download"></i> Exportar Mapa
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Visualización del mapa -->
+                        <div id="mapa-visualizacion" style="min-height: 500px; background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px;">
+                            <div class="text-center mt-5">
+                                <canvas id="canvas-mapa" width="700" height="400"></canvas>
+                            </div>
+                            
+                            <!-- Leyenda -->
+                            <div style="position: absolute; bottom: 30px; right: 30px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="margin-bottom: 10px;"><strong>Intensidad</strong></div>
+                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                    <div style="width: 25px; height: 20px; background-color: #dc3545; margin-right: 10px; border: 1px solid #ccc;"></div>
+                                    <span style="font-size: 13px;">Alto (40+ casos)</span>
+                                </div>
+                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                    <div style="width: 25px; height: 20px; background-color: #ffc107; margin-right: 10px; border: 1px solid #ccc;"></div>
+                                    <span style="font-size: 13px;">Medio (20-39 casos)</span>
+                                </div>
+                                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                    <div style="width: 25px; height: 20px; background-color: #28a745; margin-right: 10px; border: 1px solid #ccc;"></div>
+                                    <span style="font-size: 13px;">Bajo (1-19 casos)</span>
+                                </div>
+                                <div style="display: flex; align-items: center;">
+                                    <div style="width: 25px; height: 20px; background-color: #e9ecef; margin-right: 10px; border: 1px solid #ccc;"></div>
+                                    <span style="font-size: 13px;">Sin datos</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel de Información -->
+            <div class="col-md-3">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Resumen Nacional</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Total Nacional:</strong>
+                            <span id="total-nacional">0</span> casos
+                        </div>
+                        <div class="mb-2">
+                            <strong>Departamentos afectados:</strong>
+                            <span id="deptos-afectados">0</span>/25
+                        </div>
+                        <div class="mb-2">
+                            <strong>Promedio por depto:</strong>
+                            <span id="promedio-depto">0</span> casos
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Top 5 Departamentos</h6>
+                    </div>
+                    <div class="card-body" id="top5-container">
+                        <p class="text-muted">Sin datos</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Comparación Años</h6>
+                    </div>
+                    <div class="card-body" id="comparacion-anos">
+                        <p class="text-muted text-center">Selecciona un año para ver comparación</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensaje inicial -->
+    <div id="mensaje-inicial-mapa" class="alert alert-info text-center">
+        <i class="bi bi-info-circle"></i> Selecciona una zoonosis y un año para visualizar el mapa de calor
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-mapa" class="text-center" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2">Generando mapa...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('filtros-mapa-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const zoonosisId = document.getElementById('enfermedad_mapa').value;
+    const anio = document.getElementById('anio_mapa').value;
+    const escala = document.getElementById('escala').value;
+    
+    if (!zoonosisId || !anio) {
+        alert('Por favor selecciona una zoonosis y un año');
+        return;
+    }
+    
+    // Mostrar loading
+    document.getElementById('mensaje-inicial-mapa').style.display = 'none';
+    document.getElementById('resultados-mapa').style.display = 'none';
+    document.getElementById('loading-mapa').style.display = 'block';
+    
+    try {
+        const response = await fetch(
+            `/api/mapa-calor/?zoonosis_id=${zoonosisId}&anio=${anio}&escala=${escala}`
+        );
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Actualizar mapa
+        dibujarMapa(data);
+        
+        // Actualizar estadísticas
+        actualizarEstadisticasMapa(data);
+        
+        // Mostrar resultados
+        document.getElementById('loading-mapa').style.display = 'none';
+        document.getElementById('resultados-mapa').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al cargar los datos: ' + error.message);
+        document.getElementById('loading-mapa').style.display = 'none';
+        document.getElementById('mensaje-inicial-mapa').style.display = 'block';
+    }
+});
+
+function dibujarMapa(data) {
+    const canvas = document.getElementById('canvas-mapa');
+    const ctx = canvas.getContext('2d');
+    
+    // Limpiar canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Título
+    const enfermedadNombre = document.getElementById('enfermedad_mapa').selectedOptions[0].text;
+    const anio = document.getElementById('anio_mapa').value;
+    
+    document.getElementById('titulo-mapa').textContent = 
+        `Mapa de Calor - ${enfermedadNombre} ${anio}`;
+    
+    // Dibujar representación simple del mapa
+    ctx.fillStyle = '#e9ecef';
+    ctx.fillRect(50, 50, 600, 300);
+    
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(50, 50, 600, 300);
+    
+    // Título en el canvas
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Mapa del Perú - Distribución de Casos', 350, 30);
+    
+    // Dibujar "burbujas" representando departamentos
+    const departamentos = data.departamentos.slice(0, 10); // Top 10
+    
+    departamentos.forEach((dept, index) => {
+        const x = 100 + (index % 5) * 120;
+        const y = 100 + Math.floor(index / 5) * 120;
+        const radio = Math.min(50, 10 + dept.casos / 2);
+        
+        // Color según cantidad
+        let color;
+        if (dept.casos >= 40) {
+            color = '#dc3545';
+        } else if (dept.casos >= 20) {
+            color = '#ffc107';
+        } else {
+            color = '#28a745';
+        }
+        
+        // Dibujar círculo
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(x, y, radio, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        
+        // Borde
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Texto
+        ctx.fillStyle = '#000';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(dept.nombre.substring(0, 8), x, y - radio - 5);
+        ctx.fillText(dept.casos + ' casos', x, y + 3);
+    });
+}
+
+function actualizarEstadisticasMapa(data) {
+    const stats = data.estadisticas;
+    
+    document.getElementById('total-nacional').textContent = stats.total_nacional;
+    document.getElementById('deptos-afectados').textContent = stats.departamentos_afectados;
+    document.getElementById('promedio-depto').textContent = stats.promedio;
+    
+    // Top 5
+    const top5Container = document.getElementById('top5-container');
+    top5Container.innerHTML = '';
+    
+    stats.top5.forEach((dept, index) => {
+        const badgeColor = index === 0 ? 'danger' : (index === 1 ? 'warning' : 'info');
+        const div = document.createElement('div');
+        div.className = 'd-flex justify-content-between mb-2';
+        div.innerHTML = `
+            <span>${dept.nombre}</span>
+            <span class="badge bg-${badgeColor}">${dept.casos}</span>
+        `;
+        top5Container.appendChild(div);
+    });
+}
+
+// Exportar mapa
+document.getElementById('btn-exportar-mapa').addEventListener('click', function() {
+    const canvas = document.getElementById('canvas-mapa');
+    const url = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = 'mapa_calor.png';
+    link.href = url;
+    link.click();
+});
+</script>
+{% endblock %}

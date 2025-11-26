@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}Inicio - ZoonoSight{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <!-- Hero Section -->
+    <div class="row align-items-center mb-5">
+        <div class="col-md-6">
+            <h1 class="display-4 fw-bold text-primary">ZoonoSight</h1>
+            <p class="lead">Sistema de Análisis Histórico y Patrones de Zoonosis en Perú</p>
+            <p class="text-muted">
+                Plataforma inteligente para visualizar y analizar datos epidemiológicos de zoonosis 
+                reportados por el MINSA durante el período 2000-2023.
+            </p>
+            <a href="{% url 'dashboard_tendencias' %}" class="btn btn-primary btn-lg">
+                <i class="bi bi-graph-up"></i> Comenzar Análisis
+            </a>
+        </div>
+        <div class="col-md-6">
+            <img src="https://via.placeholder.com/500x300/0d6efd/ffffff?text=Mapa+de+Peru" 
+                 alt="Análisis de Datos" class="img-fluid rounded shadow">
+        </div>
+    </div>
+
+    <!-- Características -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="card h-100 text-center border-0 shadow-sm">
+                <div class="card-body">
+                    <i class="bi bi-graph-up text-primary" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">Tendencias Históricas</h5>
+                    <p class="card-text">Visualiza la evolución temporal de zoonosis específicas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center border-0 shadow-sm">
+                <div class="card-body">
+                    <i class="bi bi-map text-success" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">Mapas de Calor</h5>
+                    <p class="card-text">Analiza la distribución geográfica por departamentos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center border-0 shadow-sm">
+                <div class="card-body">
+                    <i class="bi bi-calendar3 text-warning" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">Patrones Estacionales</h5>
+                    <p class="card-text">Identifica tendencias mensuales y correlaciones</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center border-0 shadow-sm">
+                <div class="card-body">
+                    <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">Reportes PDF</h5>
+                    <p class="card-text">Genera informes personalizados comparativos</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas Generales -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h2 class="text-center mb-4">Estadísticas del Sistema</h2>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3>115K+</h3>
+                    <p class="mb-0">Casos Registrados</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3>23</h3>
+                    <p class="mb-0">Años de Datos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h3>25</h3>
+                    <p class="mb-0">Departamentos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h3>5+</h3>
+                    <p class="mb-0">Tipos de Zoonosis</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
