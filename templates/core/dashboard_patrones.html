@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block title %}Patrones Estacionales - ZoonoSight{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-calendar3"></i> Análisis de Patrones Estacionales</h2>
+            <p class="text-muted">Identificación de tendencias temporales y correlaciones mensuales</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body bg-light">
+            <form id="filtros-patrones-form">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Enfermedades a Comparar</label>
+                        <div style="max-height: 150px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; background: white;">
+                            {% for zoonosis in zoonosis_list %}
+                            <div class="form-check">
+                                <input class="form-check-input zoonosis-checkbox" type="checkbox" 
+                                       value="{{ zoonosis.id }}" id="zoonosis-{{ zoonosis.id }}">
+                                <label class="form-check-label" for="zoonosis-{{ zoonosis.id }}">
+                                    {{ zoonosis.nombre }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="periodo_inicio_patrones" class="form-label">Período Inicio</label>
+                        <select class="form-select" id="periodo_inicio_patrones" required>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}" {% if ano == 2020 %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="periodo_fin_patrones" class="form-label">Período Fin</label>
+                        <select class="form-select" id="periodo_fin_patrones" required>
+                            {% for ano in anos %}
+                            <option value="{{ ano }}" {% if ano == 2023 %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="region_patrones" class="form-label">Región</label>
+                        <select class="form-select" id="region_patrones">
+                            <option value="nacional" selected>Nacional</option>
+                            {% for dept in departamentos %}
+                            <option value="{{ dept.id }}">{{ dept.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Analizar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Resultados -->
+    <div id="resultados-patrones" style="display: none;">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Distribución Mensual</h5>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary active" id="btn-meses">Por Meses</button>
+                            <button class="btn btn-outline-primary" id="btn-circular">Vista Circular</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="grafico-patrones" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card mb-3" style="background-color: #fff3cd;">
+                    <div class="card-header">
+                        <h6 class="mb-0">Insights Principales</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <strong>Pico Estacional:</strong><br>
+                            <span class="text-primary" id="mes-max-insight">-</span> con 
+                            <span id="casos-max-insight">0</span> casos promedio
+                        </div>
+                        <div class="mb-3">
+                            <strong>Temporada Baja:</strong><br>
+                            <span class="text-success" id="mes-min-insight">-</span> con 
+                            <span id="casos-min-insight">0</span> casos
+                        </div>
+                        <div>
+                            <strong>Total Período:</strong><br>
+                            <span id="total-insight">0</span> casos registrados
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Estadísticas Mensuales</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Promedio mensual:</span>
+                            <span class="badge bg-info" id="promedio-mensual">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensaje inicial -->
+    <div id="mensaje-inicial-patrones" class="alert alert-info text-center">
+        <i class="bi bi-info-circle"></i> Selecciona al menos una enfermedad y el período para analizar patrones estacionales
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-patrones" class="text-center" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2">Analizando patrones...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let graficoPatrones = null;
+
+document.getElementById('filtros-patrones-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const checkboxes = document.querySelectorAll('.zoonosis-checkbox:checked');
+    const zoonosisIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (zoonosisIds.length === 0) {
+        alert('Selecciona al menos una enfermedad');
+        return;
+    }
+    
+    const anioInicio = document.getElementById('periodo_inicio_patrones').value;
+    const anioFin = document.getElementById('periodo_fin_patrones').value;
+    const departamentoId = document.getElementById('region_patrones').value;
+    
+    // Mostrar loading
+    document.getElementById('mensaje-inicial-patrones').style.display = 'none';
+    document.getElementById('resultados-patrones').style.display = 'none';
+    document.getElementById('loading-patrones').style.display = 'block';
+    
+    try {
+        const params = new URLSearchParams();
+        zoonosisIds.forEach(id => params.append('zoonosis_ids[]', id));
+        params.append('anio_inicio', anioInicio);
+        params.append('anio_fin', anioFin);
+        params.append('departamento_id', departamentoId);
+        
+        const response = await fetch(`/api/patrones-estacionales/?${params}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Actualizar gráfico
+        actualizarGraficoPatrones(data);
+        
+        // Actualizar insights
+        actualizarInsights(data);
+        
+        // Mostrar resultados
+        document.getElementById('loading-patrones').style.display = 'none';
+        document.getElementById('resultados-patrones').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al cargar los datos: ' + error.message);
+        document.getElementById('loading-patrones').style.display = 'none';
+        document.getElementById('mensaje-inicial-patrones').style.display = 'block';
+    }
+});
+
+function actualizarGraficoPatrones(data) {
+    const ctx = document.getElementById('grafico-patrones').getContext('2d');
+    
+    if (graficoPatrones) {
+        graficoPatrones.destroy();
+    }
+    
+    graficoPatrones = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.meses,
+            datasets: [{
+                label: 'Casos por Mes',
+                data: data.casos,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Número de Casos'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function actualizarInsights(data) {
+    const stats = data.estadisticas;
+    
+    document.getElementById('mes-max-insight').textContent = stats.mes_max;
+    document.getElementById('casos-max-insight').textContent = stats.casos_max;
+    document.getElementById('mes-min-insight').textContent = stats.mes_min;
+    document.getElementById('casos-min-insight').textContent = stats.casos_min;
+    document.getElementById('total-insight').textContent = stats.total;
+    document.getElementById('promedio-mensual').textContent = stats.promedio_mensual + ' casos';
+}
+
+// Vista circular (placeholder)
+document.getElementById('btn-circular').addEventListener('click', function() {
+    if (graficoPatrones) {
+        graficoPatrones.config.type = 'polarArea';
+        graficoPatrones.update();
+        this.classList.add('active');
+        document.getElementById('btn-meses').classList.remove('active');
+    }
+});
+
+document.getElementById('btn-meses').addEventListener('click', function() {
+    if (graficoPatrones) {
+        graficoPatrones.config.type = 'bar';
+        graficoPatrones.update();
+        this.classList.add('active');
+        document.getElementById('btn-circular').classList.remove('active');
+    }
+});
+</script>
+{% endblock %}

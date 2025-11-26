@@ -150,3 +150,143 @@ def api_mapa_calor(request):
     
     return JsonResponse(data)
 
+def dashboard_patrones(request):
+    """Vista del dashboard de patrones estacionales"""
+    zoonosis_list = TipoZoonosis.objects.all().order_by('nombre')
+    anos = Caso.objects.values_list('anio', flat=True).distinct().order_by('anio')
+    departamentos = Departamento.objects.all().order_by('nombre')
+    
+    context = {
+        'zoonosis_list': zoonosis_list,
+        'anos': list(anos),
+        'departamentos': departamentos,
+    }
+    return render(request, 'core/dashboard_patrones.html', context)
+
+def api_patrones_estacionales(request):
+    """API para obtener patrones estacionales por mes"""
+    zoonosis_ids = request.GET.getlist('zoonosis_ids[]')
+    anio_inicio = request.GET.get('anio_inicio')
+    anio_fin = request.GET.get('anio_fin')
+    departamento_id = request.GET.get('departamento_id')
+    
+    if not all([zoonosis_ids, anio_inicio, anio_fin]):
+        return JsonResponse({'error': 'Parámetros incompletos'}, status=400)
+    
+    # Construir consulta
+    query = Q(zoonosis_id__in=zoonosis_ids, anio__gte=anio_inicio, anio__lte=anio_fin)
+    
+    if departamento_id and departamento_id != 'nacional':
+        query &= Q(distrito__provincia__departamento_id=departamento_id)
+    
+    # Calcular semana a mes aproximado
+    casos = Caso.objects.filter(query)
+    
+    # Agrupar por mes (aproximado desde semana epidemiológica)
+    meses_data = {}
+    for mes in range(1, 13):
+        # Aproximación: semana 1-4 = mes 1, semana 5-8 = mes 2, etc.
+        semana_inicio = (mes - 1) * 4 + 1
+        semana_fin = mes * 4
+        
+        casos_mes = casos.filter(
+            semana_epidemiologica__gte=semana_inicio,
+            semana_epidemiologica__lte=semana_fin
+        ).count()
+        
+        meses_data[mes] = casos_mes
+    
+    # Preparar datos para gráfico
+    meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+    casos_por_mes = [meses_data[i] for i in range(1, 13)]
+    
+    # Estadísticas
+    total_casos = sum(casos_por_mes)
+    promedio_mensual = total_casos / 12 if total_casos > 0 else 0
+    
+    mes_max_index = casos_por_mes.index(max(casos_por_mes)) if casos_por_mes else 0
+    mes_min_index = casos_por_mes.index(min(casos_por_mes)) if casos_por_mes else 0
+    
+    data = {
+        'meses': meses,
+        'casos': casos_por_mes,
+        'estadisticas': {
+            'total': total_casos,
+            'promedio_mensual': round(promedio_mensual, 1),
+            'mes_max': meses[mes_max_index],
+            'casos_max': casos_por_mes[mes_max_index],
+            'mes_min': meses[mes_min_index],
+            'casos_min': casos_por_mes[mes_min_index],
+        }
+    }
+    
+    return JsonResponse(data)
+
+def dashboard_reportes(request):
+    """Vista del generador de reportes"""
+    zoonosis_list = TipoZoonosis.objects.all().order_by('nombre')
+    anos = Caso.objects.values_list('anio', flat=True).distinct().order_by('anio')
+    departamentos = Departamento.objects.all().order_by('nombre')
+    
+    context = {
+        'zoonosis_list': zoonosis_list,
+        'anos': list(anos),
+        'departamentos': departamentos,
+    }
+    return render(request, 'core/dashboard_reportes.html', context)
+
+def api_generar_reporte(request):
+    """API para generar vista previa de reporte"""
+    departamentos_ids = request.GET.getlist('departamentos[]')
+    zoonosis_id = request.GET.get('zoonosis_id')
+    anio_inicio = request.GET.get('anio_inicio')
+    anio_fin = request.GET.get('anio_fin')
+    
+    if not all([departamentos_ids, zoonosis_id, anio_inicio, anio_fin]):
+        return JsonResponse({'error': 'Parámetros incompletos'}, status=400)
+    
+    # Obtener datos para cada departamento
+    datos_departamentos = []
+    
+    for dept_id in departamentos_ids:
+        casos = Caso.objects.filter(
+            zoonosis_id=zoonosis_id,
+            anio__gte=anio_inicio,
+            anio__lte=anio_fin,
+            distrito__provincia__departamento_id=dept_id
+        )
+        
+        total_casos = casos.count()
+        casos_por_anio = casos.values('anio').annotate(total=Count('id')).order_by('anio')
+        
+        num_anios = int(anio_fin) - int(anio_inicio) + 1
+        promedio_anual = total_casos / num_anios if num_anios > 0 else 0
+        
+        # Calcular tendencia
+        if len(casos_por_anio) >= 2:
+            primer_anio_casos = list(casos_por_anio)[0]['total']
+            ultimo_anio_casos = list(casos_por_anio)[-1]['total']
+            tendencia = ((ultimo_anio_casos - primer_anio_casos) / primer_anio_casos * 100) if primer_anio_casos > 0 else 0
+        else:
+            tendencia = 0
+        
+        departamento = Departamento.objects.get(id=dept_id)
+        
+        datos_departamentos.append({
+            'nombre': departamento.nombre,
+            'total_casos': total_casos,
+            'promedio_anual': round(promedio_anual, 1),
+            'tendencia': round(tendencia, 1),
+            'casos_por_anio': list(casos_por_anio)
+        })
+    
+    # Obtener nombre de zoonosis
+    zoonosis = TipoZoonosis.objects.get(id=zoonosis_id)
+    
+    data = {
+        'departamentos': datos_departamentos,
+        'zoonosis_nombre': zoonosis.nombre,
+        'periodo': f"{anio_inicio}-{anio_fin}"
+    }
+    
+    return JsonResponse(data)

@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+
+{% block title %}Generador de Reportes - ZoonoSight{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-file-earmark-pdf"></i> Generador de Reportes Comparativos</h2>
+            <p class="text-muted">Crea informes personalizados comparando regiones y zoonosis</p>
+        </div>
+    </div>
+
+    <!-- Indicador de pasos -->
+    <div class="mb-4">
+        <div class="d-flex justify-content-between">
+            <div class="text-center flex-fill">
+                <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center" 
+                     style="width: 40px; height: 40px;">1</div>
+                <div class="mt-2"><small>Configuración</small></div>
+            </div>
+            <div class="text-center flex-fill">
+                <div class="rounded-circle bg-secondary text-white d-inline-flex align-items-center justify-content-center" 
+                     style="width: 40px; height: 40px;" id="paso2-indicator">2</div>
+                <div class="mt-2"><small>Vista Previa</small></div>
+            </div>
+            <div class="text-center flex-fill">
+                <div class="rounded-circle bg-secondary text-white d-inline-flex align-items-center justify-content-center" 
+                     style="width: 40px; height: 40px;" id="paso3-indicator">3</div>
+                <div class="mt-2"><small>Descarga</small></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Panel de configuración -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Configuración del Reporte</h5>
+                </div>
+                <div class="card-body">
+                    <form id="form-reporte">
+                        <div class="mb-3">
+                            <label class="form-label">Departamentos (2-5)</label>
+                            <div style="max-height: 150px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px;">
+                                {% for dept in departamentos|slice:":10" %}
+                                <div class="form-check">
+                                    <input class="form-check-input dept-checkbox" type="checkbox" 
+                                           value="{{ dept.id }}" id="dept-{{ dept.id }}">
+                                    <label class="form-check-label" for="dept-{{ dept.id }}">
+                                        {{ dept.nombre }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted">Selecciona entre 2 y 5 departamentos</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="zoonosis_reporte" class="form-label">Tipo de Zoonosis</label>
+                            <select class="form-select" id="zoonosis_reporte" required>
+                                <option value="">-- Seleccionar --</option>
+                                {% for zoonosis in zoonosis_list %}
+                                <option value="{{ zoonosis.id }}">{{ zoonosis.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="fecha_inicio_reporte" class="form-label">Año Inicio</label>
+                                <select class="form-select" id="fecha_inicio_reporte" required>
+                                    {% for ano in anos %}
+                                    <option value="{{ ano }}" {% if ano == 2020 %}selected{% endif %}>{{ ano }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label for="fecha_fin_reporte" class="form-label">Año Fin</label>
+                                <select class="form-select" id="fecha_fin_reporte" required>
+                                    {% for ano in anos %}
+                                    <option value="{{ ano }}" {% if ano == 2023 %}selected{% endif %}>{{ ano }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Contenido</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="incluir_graficos" checked>
+                                <label class="form-check-label" for="incluir_graficos">
+                                    Incluir Gráficos
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="incluir_tablas" checked>
+                                <label class="form-check-label" for="incluir_tablas">
+                                    Incluir Tablas
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-eye"></i> Generar Vista Previa
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vista previa -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Vista Previa del Reporte</h5>
+                    <button class="btn btn-success" id="btn-descargar-pdf" disabled>
+                        <i class="bi bi-download"></i> Descargar PDF
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="vista-previa-reporte" style="min-height: 500px;">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-file-earmark-text" style="font-size: 4rem;"></i>
+                            <p class="mt-3">Configura los parámetros y genera la vista previa</p>
+                        </div>
+                    </div>
+
+                    <!-- Loading -->
+                    <div id="loading-reporte" class="text-center py-5" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Generando...</span>
+                        </div>
+                        <p class="mt-2">Generando reporte...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('form-reporte').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const checkboxes = document.querySelectorAll('.dept-checkbox:checked');
+    const departamentosIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (departamentosIds.length < 2 || departamentosIds.length > 5) {
+        alert('Debes seleccionar entre 2 y 5 departamentos');
+        return;
+    }
+    
+    const zoonosisId = document.getElementById('zoonosis_reporte').value;
+    if (!zoonosisId) {
+        alert('Selecciona un tipo de zoonosis');
+        return;
+    }
+    
+    const anioInicio = document.getElementById('fecha_inicio_reporte').value;
+    const anioFin = document.getElementById('fecha_fin_reporte').value;
+    
+    // Mostrar loading
+    document.getElementById('vista-previa-reporte').style.display = 'none';
+    document.getElementById('loading-reporte').style.display = 'block';
+    document.getElementById('paso2-indicator').classList.remove('bg-secondary');
+    document.getElementById('paso2-indicator').classList.add('bg-primary');
+    
+    try {
+        const params = new URLSearchParams();
+        departamentosIds.forEach(id => params.append('departamentos[]', id));
+        params.append('zoonosis_id', zoonosisId);
+        params.append('anio_inicio', anioInicio);
+        params.append('anio_fin', anioFin);
+        
+        const response = await fetch(`/api/generar-reporte/?${params}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Generar vista previa
+        generarVistaPrevia(data);
+        
+        // Habilitar descarga
+        document.getElementById('btn-descargar-pdf').disabled = false;
+        document.getElementById('paso3-indicator').classList.remove('bg-secondary');
+        document.getElementById('paso3-indicator').classList.add('bg-success');
+        
+        // Mostrar vista previa
+        document.getElementById('loading-reporte').style.display = 'none';
+        document.getElementById('vista-previa-reporte').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al generar el reporte: ' + error.message);
+        document.getElementById('loading-reporte').style.display = 'none';
+        document.getElementById('vista-previa-reporte').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> Error al generar el reporte
+            </div>
+        `;
+        document.getElementById('vista-previa-reporte').style.display = 'block';
+    }
+});
+
+function generarVistaPrevia(data) {
+    const container = document.getElementById('vista-previa-reporte');
+    
+    let html = `
+        <div class="border p-4" style="background: white;">
+            <div class="text-center mb-4">
+                <h4>Reporte Comparativo de ${data.zoonosis_nombre}</h4>
+                <p class="text-muted">Período: ${data.periodo}</p>
+                <hr>
+            </div>
+            
+            <h6>Tabla Comparativa</h6>
+            <table class="table table-bordered table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th>Departamento</th>
+                        <th>Total Casos</th>
+                        <th>Promedio Anual</th>
+                        <th>Tendencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    data.departamentos.forEach(dept => {
+        const tendenciaClass = dept.tendencia > 0 ? 'text-danger' : (dept.tendencia < 0 ? 'text-success' : 'text-secondary');
+        html += `
+            <tr>
+                <td>${dept.nombre}</td>
+                <td>${dept.total_casos}</td>
+                <td>${dept.promedio_anual}</td>
+                <td class="${tendenciaClass}">${dept.tendencia}%</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+            
+            <div class="text-center mt-4">
+                <small class="text-muted">Vista previa generada - ZoonoSight ${new Date().getFullYear()}</small>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+document.getElementById('btn-descargar-pdf').addEventListener('click', function() {
+    alert('Funcionalidad de generación PDF en desarrollo.\n\nPor ahora puedes usar la opción "Imprimir" del navegador y guardar como PDF.');
+    window.print();
+});
+</script>
+{% endblock %}
